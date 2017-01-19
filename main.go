@@ -25,7 +25,7 @@ Tool for searching mcabber history using history file parsing and filtering.
 
 Usage:
   mcabber-history -h | --help
-  mcabber-history [options] -S <channel> <filter>
+  mcabber-history [options] -S <channel> <filter>...
 
 Options:
   -h --help      Show this help.
@@ -65,10 +65,8 @@ func main() {
 
 func search(args map[string]interface{}) error {
 	files, err := filepath.Glob(
-		filepath.Join(
-			args["--path"].(string),
-			args["<channel>"].(string),
-		) + "*",
+		args["--path"].(string) + "/" +
+			args["<channel>"].(string) + "*",
 	)
 	if err != nil {
 		return ser.Errorf(
@@ -87,12 +85,13 @@ func search(args map[string]interface{}) error {
 		)
 	}
 
-	filter, err := regexp.Compile(args["<filter>"].(string))
+	expression := `(?si)` + strings.Join(args["<filter>"].([]string), `.*`)
+	filter, err := regexp.Compile(expression)
 	if err != nil {
 		return ser.Errorf(
 			err,
 			"can't compile regexp %q",
-			args["<filter>"].(string),
+			expression,
 		)
 	}
 
@@ -121,10 +120,10 @@ func search(args map[string]interface{}) error {
 			}
 
 			var (
-				matched = false
-				lines   = []string{
+				lines = []string{
 					fmt.Sprintf("%s %s",
-						color.BlueString(header.Time.Format(time.ANSIC)), header.Message,
+						color.BlueString(header.Time.Format(time.ANSIC)),
+						header.Message,
 					),
 				}
 			)
@@ -139,17 +138,16 @@ func search(args map[string]interface{}) error {
 				}
 
 				lines = append(lines, scanner.Text())
-
-				if filter.MatchString(scanner.Text()) {
-					matched = true
-				}
 			}
 
-			if matched {
+			message := strings.Join(lines, "\n")
+
+			if filter.MatchString(message) {
 				if separator {
 					fmt.Println()
 				}
-				fmt.Println(strings.Join(lines, "\n"))
+
+				fmt.Println(message)
 
 				separator = true
 			}
