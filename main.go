@@ -174,7 +174,7 @@ func parseHeader(line string) (*Header, error) {
 	}
 
 	return &Header{
-		Time:    timedate,
+		Time:    timedate.In(time.Local),
 		Length:  int(length),
 		Message: fields[3],
 	}, nil
