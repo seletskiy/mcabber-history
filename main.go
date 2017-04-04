@@ -34,6 +34,8 @@ Options:
                              [default: $HOME/.mcabber/history]
   --ignore-channels <chan>  Ignore channels, delimited by comma, matched by
                              prefix.
+  --since <time>            Print only messages since specified time.
+                             [default: 24h]
 `
 
 type (
@@ -108,12 +110,21 @@ func search(args map[string]interface{}) error {
 		)
 	}
 
-	separator := false
+	since, err := time.ParseDuration(args["--since"].(string))
+	if err != nil {
+		return fmt.Errorf(
+			"can't parse time duration %q: %s",
+			args["--since"].(string), err,
+		)
+	}
 
 	ignoredChannels, _ := args["--ignore-channels"].(string)
 
+	separator := false
+
 	for _, file := range files {
 		ignore := false
+
 		if ignoredChannels != "" {
 			for _, name := range strings.Split(ignoredChannels, ",") {
 				if strings.HasPrefix(filepath.Base(file), name) {
@@ -147,6 +158,12 @@ func search(args map[string]interface{}) error {
 				)
 			}
 
+			ignore := false
+
+			if time.Since(header.Time).Seconds() > since.Seconds() {
+				ignore = true
+			}
+
 			var (
 				direction string
 			)
@@ -159,7 +176,7 @@ func search(args map[string]interface{}) error {
 				direction = color.RedString("<<<")
 
 			case DirectionInfo:
-				continue
+				ignore = true
 			}
 
 			var (
@@ -182,6 +199,10 @@ func search(args map[string]interface{}) error {
 				}
 
 				lines = append(lines, scanner.Text())
+			}
+
+			if ignore {
+				continue
 			}
 
 			message := strings.Join(lines, "\n")
