@@ -25,20 +25,33 @@ Tool for searching mcabber history using history file parsing and filtering.
 
 Usage:
   mcabber-history -h | --help
-  mcabber-history [options] -S <channel> <filter>...
+  mcabber-history [options] -S <channel> [<filter>...]
 
 Options:
-  -h --help      Show this help.
-  -S             Search specified channel by specified filter.
-  --path <path>  Path to history files directory.
-                  [default: $HOME/.mcabber/history]
+  -h --help                 Show this help.
+  -S                        Search specified channel by specified filter.
+  --path <path>             Path to history files directory.
+                             [default: $HOME/.mcabber/history]
+  --ignore-channels <chan>  Ignore channels, delimited by comma, matched by
+                             prefix.
 `
 
+type (
+	Direction string
+)
+
+const (
+	DirectionSend Direction = "MS"
+	DirectionRecv           = "MR"
+	DirectionInfo           = "MI"
+)
+
 type Header struct {
-	Type    string
-	Time    time.Time
-	Length  int
-	Message string
+	Direction Direction
+	Type      string
+	Time      time.Time
+	Length    int
+	Message   string
 }
 
 func main() {
@@ -97,7 +110,22 @@ func search(args map[string]interface{}) error {
 
 	separator := false
 
+	ignoredChannels, _ := args["--ignore-channels"].(string)
+
 	for _, file := range files {
+		ignore := false
+		if ignoredChannels != "" {
+			for _, name := range strings.Split(ignoredChannels, ",") {
+				if strings.HasPrefix(filepath.Base(file), name) {
+					ignore = true
+				}
+			}
+		}
+
+		if ignore {
+			continue
+		}
+
 		handle, err := os.Open(file)
 		if err != nil {
 			return ser.Errorf(
@@ -120,8 +148,24 @@ func search(args map[string]interface{}) error {
 			}
 
 			var (
+				direction string
+			)
+
+			switch header.Direction {
+			case DirectionRecv:
+				direction = color.GreenString(">>>")
+
+			case DirectionSend:
+				direction = color.RedString("<<<")
+
+			case DirectionInfo:
+				continue
+			}
+
+			var (
 				lines = []string{
-					fmt.Sprintf("%s %s",
+					fmt.Sprintf("%s %s %s",
+						direction,
 						color.BlueString(header.Time.Format(time.ANSIC)),
 						header.Message,
 					),
@@ -173,9 +217,28 @@ func parseHeader(line string) (*Header, error) {
 		return nil, fmt.Errorf("can't parse datetime %q", fields[1])
 	}
 
+	var (
+		direction Direction
+	)
+
+	switch Direction(fields[0]) {
+	case DirectionSend:
+		direction = DirectionSend
+
+	case DirectionRecv:
+		direction = DirectionRecv
+
+	case DirectionInfo:
+		direction = DirectionInfo
+
+	default:
+		return nil, fmt.Errorf("unknown message direction %q", fields[0])
+	}
+
 	return &Header{
-		Time:    timedate.In(time.Local),
-		Length:  int(length),
-		Message: fields[3],
+		Direction: direction,
+		Time:      timedate.In(time.Local),
+		Length:    int(length),
+		Message:   fields[3],
 	}, nil
 }
